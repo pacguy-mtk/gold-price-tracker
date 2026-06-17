@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gold Price Tracker (RM/g)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#07111f;
+      --bg2:#0c1b31;
+      --card:#0f1f38cc;
+      --card-strong:#132744;
+      --line:#24415f;
+      --text:#eaf2ff;
+      --muted:#9fb4d0;
+      --gold:#f8c44f;
+      --green:#4ade80;
+      --red:#fb7185;
+      --blue:#60a5fa;
+      --shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 15% 10%, rgba(248,196,79,.16), transparent 60%),
+        radial-gradient(900px 600px at 80% 20%, rgba(96,165,250,.18), transparent 50%),
+        linear-gradient(160deg, var(--bg) 0%, #091425 45%, #0a1120 100%);
+      min-height: 100vh;
+    }
+    .glass {
+      background: linear-gradient(180deg, rgba(15,31,56,.92), rgba(11,22,41,.88));
+      border: 1px solid rgba(148,163,184,.16);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(148,163,184,.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,.06) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .metric {
+      border: 1px solid rgba(148,163,184,.14);
+      background: linear-gradient(180deg, rgba(19,39,68,.95), rgba(11,22,41,.82));
+    }
+    .chip { border: 1px solid rgba(148,163,184,.18); }
+    .btn {
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    input, select, button, textarea {
+      font: inherit;
+    }
+    input, select, textarea {
+      background: rgba(6,12,22,.8);
+      border: 1px solid rgba(148,163,184,.18);
+      color: var(--text);
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(248,196,79,.6);
+      box-shadow: 0 0 0 3px rgba(248,196,79,.15);
+    }
+    canvas {
+      max-width: 100%;
+    }
+    .signal-buy { border-color: rgba(74,222,128,.35); background: rgba(20,83,45,.22); }
+    .signal-sell { border-color: rgba(251,113,133,.35); background: rgba(136,19,55,.2); }
+    .signal-hold { border-color: rgba(96,165,250,.35); background: rgba(30,64,175,.18); }
+    @media (max-width: 640px) {
+      .stack-mobile { display: grid; gap: .75rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="min-h-screen">
+    <div class="grid-bg">
+      <div class="max-w-7xl mx-auto px-4 py-6 md:px-6 lg:px-8">
+        <header class="glass rounded-3xl p-5 md:p-6 mb-6">
+          <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full chip text-xs text-amber-200/90 bg-amber-400/10 mb-3">
+                <span>Gold Price Tracker</span>
+                <span class="text-amber-300">RM/g</span>
+              </div>
+              <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight">Track TnG Emas buy/sell prices and tune your margin.</h1>
+              <p class="text-sm md:text-base text-slate-300 mt-2 max-w-3xl">
+                Save daily prices locally, pull numbers from screenshots when OCR works, and see targets, spread, trend, and your profit margin at a glance.
+              </p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <button id="exportCsvBtn" class="btn rounded-2xl px-4 py-3 bg-sky-500 text-slate-950 font-bold hover:bg-sky-400">Export CSV</button>
+              <label class="btn cursor-pointer rounded-2xl px-4 py-3 bg-cyan-500 text-slate-950 font-bold hover:bg-cyan-400 text-center">
+                <input id="importCsvInput" type="file" accept=".csv,text/csv" class="hidden">
+                Import CSV
+              </label>
+              <button id="clearAllBtn" class="btn rounded-2xl px-4 py-3 bg-rose-500 text-slate-950 font-bold hover:bg-rose-400">Clear All Data</button>
+              <button id="seedDemoBtn" class="btn rounded-2xl px-4 py-3 bg-slate-800 text-slate-100 font-semibold border border-slate-700 hover:border-slate-500">Load Demo Data</button>
+            </div>
+          </div>
+        </header>
+
+        <main class="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6">
+          <section class="space-y-6">
+            <div class="glass rounded-3xl p-5 md:p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">Entry Panel</h2>
+                <span class="text-xs text-slate-400">Small and tidy</span>
+              </div>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm text-slate-300 mb-2" for="entryDate">Date</label>
+                  <input id="entryDate" type="date" class="w-full rounded-2xl px-4 py-3" />
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm text-slate-300 mb-2" for="sellInput">You Sell (RM/g)</label>
+                    <input id="sellInput" type="number" step="0.01" min="0" placeholder="333.00" class="w-full rounded-2xl px-4 py-3" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300 mb-2" for="buyInput">You Buy (RM/g)</label>
+                    <input id="buyInput" type="number" step="0.01" min="0" placeholder="355.00" class="w-full rounded-2xl px-4 py-3" />
+                  </div>
+                </div>
+                <div id="ocrPanel" class="hidden rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4">
+                  <div class="text-sm font-semibold text-amber-200 mb-1">OCR preview</div>
+                  <div id="ocrPreview" class="text-sm text-amber-50/90"></div>
+                  <div class="mt-3 flex flex-wrap gap-3">
+                    <button id="applyOcrBtn" class="btn rounded-2xl px-4 py-2 bg-amber-400 text-slate-950 font-semibold">Use detected values</button>
+                    <button id="dismissOcrBtn" class="btn rounded-2xl px-4 py-2 bg-slate-800 text-slate-100 border border-slate-700">Ignore</button>
+                  </div>
+                </div>
+                <div class="stack-mobile">
+                  <button id="addEntryBtn" class="btn rounded-2xl px-5 py-3 bg-emerald-400 text-slate-950 font-bold hover:bg-emerald-300">Add Entry</button>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label class="btn cursor-pointer inline-flex items-center gap-2 rounded-2xl px-4 py-3 bg-amber-400 text-slate-950 font-semibold hover:bg-amber-300">
+                    <input id="screenshotInput" type="file" accept="image/png,image/jpeg,image/jpg" class="hidden">
+                    <span>Upload Screenshot</span>
+                  </label>
+                  <button id="clearFormBtn" class="btn rounded-2xl px-4 py-3 bg-slate-800/80 text-slate-100 font-semibold border border-slate-700 hover:border-slate-500">
+                    Clear Form
+                  </button>
+                </div>
+                <p id="formStatus" class="text-sm text-slate-400 min-h-[1.25rem]"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-6">
+            <div class="glass rounded-3xl p-5 md:p-6">
+              <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-5">
+                <div>
+                  <h2 class="text-lg font-bold">Analysis Dashboard</h2>
+                  <p class="text-sm text-slate-400">Auto-updates when entries change.</p>
+                </div>
+                <div id="latestSummary" class="text-sm text-slate-300"></div>
+              </div>
+              <div class="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Today's You Buy</div>
+                  <div id="todayBuy" class="mt-2 text-2xl font-extrabold text-amber-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Today's You Sell</div>
+                  <div id="todaySell" class="mt-2 text-2xl font-extrabold text-emerald-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Historical Midpoint</div>
+                  <div id="historicalAvgBuy" class="mt-2 text-2xl font-extrabold text-sky-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Buy Target</div>
+                  <div id="buyTarget" class="mt-2 text-2xl font-extrabold text-amber-200">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Sell Target</div>
+                  <div id="sellTarget" class="mt-2 text-2xl font-extrabold text-rose-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Profit Margin</div>
+                  <div class="mt-2">
+                    <input id="profitMarginInput" type="number" min="0" step="0.01" class="w-full rounded-2xl px-4 py-3 text-2xl font-extrabold text-slate-100" />
+                  </div>
+                  <div class="mt-3 text-sm text-slate-300 leading-relaxed">This is the RM gap between Buy Target and Sell Target.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass rounded-3xl p-5 md:p-6">
+              <div class="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 class="text-lg font-bold">Chart</h2>
+                  <p class="text-sm text-slate-400">Buy and sell lines with a historical midpoint reference.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                  <div id="entryCount" class="text-sm text-slate-400"></div>
+                  <div class="w-28">
+                    <label class="sr-only" for="periodSelect">Period Selector</label>
+                    <select id="periodSelect" class="w-full rounded-2xl px-3 py-2 text-sm">
+                      <option value="all" selected>All</option>
+                      <option value="3mo">3mo</option>
+                      <option value="6mo">6mo</option>
+                      <option value="1yr">1yr</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-2xl bg-slate-950/40 border border-slate-700 p-3">
+                <canvas id="priceChart" height="320"></canvas>
+              </div>
+            </div>
+
+            <div class="glass rounded-3xl p-5 md:p-6">
+              <details open>
+                <summary class="cursor-pointer list-none flex items-center justify-between gap-3">
+                  <div>
+                    <h2 class="text-lg font-bold">Historical Table</h2>
+                    <p class="text-sm text-slate-400">Collapsible history with delete actions.</p>
+                  </div>
+                  <span class="text-sm text-slate-300">Toggle</span>
+                </summary>
+                <div class="mt-4 overflow-auto rounded-2xl border border-slate-700">
+                  <table class="min-w-full text-sm">
+                    <thead class="bg-slate-900/80 text-slate-300">
+                      <tr>
+                        <th class="text-left font-semibold px-4 py-3">Date</th>
+                        <th class="text-left font-semibold px-4 py-3">Buy</th>
+                        <th class="text-left font-semibold px-4 py-3">Sell</th>
+                        <th class="text-left font-semibold px-4 py-3">Spread</th>
+                        <th class="text-right font-semibold px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-800 bg-slate-950/30"></tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+
+            <div class="glass rounded-3xl p-5 md:p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">For calculation purposes only</h2>
+                <span class="text-xs text-slate-400">Hidden support metrics</span>
+              </div>
+              <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Midpoint Buy</div>
+                  <div id="smaBuy" class="mt-2 text-2xl font-extrabold text-amber-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Reference Sell</div>
+                  <div id="smaSell" class="mt-2 text-2xl font-extrabold text-emerald-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Spread</div>
+                  <div id="spread" class="mt-2 text-2xl font-extrabold text-sky-300">-</div>
+                </div>
+                <div class="metric rounded-2xl p-4">
+                  <div class="text-xs uppercase tracking-wider text-slate-400">Trend</div>
+                  <div id="trend" class="mt-2 text-2xl font-extrabold text-slate-100">-</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'gold-price-tracker-v1';
+    const TREND_SHORT_PERIOD = 7;
+    const TREND_LONG_PERIOD = 21;
+    const WINDOW_DAYS = {
+      all: null,
+      '3mo': 90,
+      '6mo': 180,
+      '1yr': 365,
+    };
+    const $ = (id) => document.getElementById(id);
+    const state = {
+      entries: [],
+      settings: {
+        windowPeriod: 'all',
+        profitMargin: 10,
+      },
+      chart: null,
+      pendingOcr: null,
+    };
+
+    const fmt = new Intl.NumberFormat('en-MY', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    const todayISO = () => new Date().toISOString().slice(0, 10);
+
+    function clampNumber(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function formatRM(value) {
+      if (!Number.isFinite(value)) return '-';
+      return `RM${fmt.format(value)}`;
+    }
+
+    function setStatus(message, tone = 'slate') {
+      const el = $('formStatus');
+      el.textContent = message;
+      el.className = `text-sm min-h-[1.25rem] ${
+        tone === 'error' ? 'text-rose-300' :
+        tone === 'success' ? 'text-emerald-300' :
+        tone === 'warn' ? 'text-amber-200' :
+        'text-slate-400'
+      }`;
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        if (Array.isArray(saved.entries)) {
+          state.entries = saved.entries
+            .filter((item) => item && item.date && Number.isFinite(Number(item.buy)) && Number.isFinite(Number(item.sell)))
+            .map((item) => ({
+              date: item.date,
+              buy: Number(item.buy),
+              sell: Number(item.sell),
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+        }
+        if (saved.settings && typeof saved.settings.windowPeriod === 'string' && Object.prototype.hasOwnProperty.call(WINDOW_DAYS, saved.settings.windowPeriod)) {
+          state.settings.windowPeriod = saved.settings.windowPeriod;
+        }
+        if (saved.settings && Number.isFinite(Number(saved.settings.profitMargin)) && Number(saved.settings.profitMargin) >= 0) {
+          state.settings.profitMargin = Number(saved.settings.profitMargin);
+        }
+      } catch (err) {
+        console.warn('Failed to load saved data', err);
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        entries: state.entries,
+        settings: state.settings,
+      }));
+    }
+
+    function getSortedEntries() {
+      return [...state.entries].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    function avg(values) {
+      if (!values.length) return null;
+      return values.reduce((sum, v) => sum + v, 0) / values.length;
+    }
+
+    function getWindowEntries(entries, windowPeriod) {
+      const days = WINDOW_DAYS[windowPeriod] ?? null;
+      if (!days) return entries;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      return entries.filter((entry) => new Date(`${entry.date}T23:59:59`) >= cutoff);
+    }
+
+    function getMidpoint(entries) {
+      if (!entries.length) return null;
+      const buys = entries.map((entry) => entry.buy);
+      return (Math.max(...buys) + Math.min(...buys)) / 2;
+    }
+
+    function getBuyRange(entries) {
+      if (!entries.length) return { min: null, max: null, spread: null };
+      const buys = entries.map((entry) => entry.buy);
+      const min = Math.min(...buys);
+      const max = Math.max(...buys);
+      return { min, max, spread: max - min };
+    }
+
+    function getTrend(smaShort, smaLong) {
+      if (smaShort == null || smaLong == null) return 'Insufficient data';
+      const delta = smaShort - smaLong;
+      if (Math.abs(delta) < 0.01) return 'Sideways';
+      return delta > 0 ? 'Uptrend' : 'Downtrend';
+    }
+
+    function getHistoricalMidpoint(entries) {
+      return getMidpoint(entries);
+    }
+
+    function upsertEntry(entry) {
+      const index = state.entries.findIndex((item) => item.date === entry.date);
+      if (index >= 0) {
+        state.entries[index] = entry;
+      } else {
+        state.entries.push(entry);
+      }
+      state.entries.sort((a, b) => a.date.localeCompare(b.date));
+      saveState();
+      render();
+    }
+
+    function clearForm() {
+      $('entryDate').value = todayISO();
+      $('buyInput').value = '';
+      $('sellInput').value = '';
+      $('ocrPanel').classList.add('hidden');
+      $('ocrPreview').textContent = '';
+      state.pendingOcr = null;
+      setStatus('Ready for the next entry.');
+    }
+
+    function renderMetrics() {
+      const entries = getSortedEntries();
+      const windowEntries = getWindowEntries(entries, state.settings.windowPeriod);
+      const historicalMidpoint = getHistoricalMidpoint(windowEntries);
+      const range = getBuyRange(windowEntries);
+      const latest = entries[entries.length - 1];
+      const trend7 = avg(windowEntries.slice(-Math.min(TREND_SHORT_PERIOD, windowEntries.length)).map((e) => e.sell));
+      const trend21 = avg(windowEntries.slice(-Math.min(TREND_LONG_PERIOD, windowEntries.length)).map((e) => e.sell));
+      const trend = getTrend(trend7, trend21);
+      const profitMargin = Number(state.settings.profitMargin);
+      const buyTargetValue = historicalMidpoint == null ? null : historicalMidpoint - (profitMargin / 2);
+      const sellTargetValue = historicalMidpoint == null ? null : historicalMidpoint + (profitMargin / 2);
+
+      $('todayBuy').textContent = latest ? formatRM(latest.buy) : '-';
+      $('todaySell').textContent = latest ? formatRM(latest.sell) : '-';
+      $('historicalAvgBuy').textContent = historicalMidpoint == null ? '-' : formatRM(historicalMidpoint);
+      $('buyTarget').textContent = buyTargetValue == null ? '-' : formatRM(buyTargetValue);
+      $('sellTarget').textContent = sellTargetValue == null ? '-' : formatRM(sellTargetValue);
+      $('smaBuy').textContent = range.min == null ? '-' : formatRM(range.min);
+      $('smaSell').textContent = range.max == null ? '-' : formatRM(range.max);
+      $('spread').textContent = range.spread == null ? '-' : formatRM(range.spread);
+      $('trend').textContent = trend;
+      $('entryCount').textContent = `${windowEntries.length} entr${windowEntries.length === 1 ? 'y' : 'ies'} in window`;
+      $('periodSelect').value = state.settings.windowPeriod;
+      $('profitMarginInput').value = Number(state.settings.profitMargin).toFixed(2);
+      $('latestSummary').textContent = latest ? `Latest: ${latest.date} | Buy ${formatRM(latest.buy)} | Sell ${formatRM(latest.sell)}` : 'Add entries to see the latest analysis.';
+    }
+
+    function renderTable() {
+      const tbody = $('tableBody');
+      const entries = [...getSortedEntries()].reverse();
+      tbody.innerHTML = entries.map((entry) => `
+        <tr class="hover:bg-slate-900/60">
+          <td class="px-4 py-3 whitespace-nowrap">${entry.date}</td>
+          <td class="px-4 py-3 whitespace-nowrap">${formatRM(entry.buy)}</td>
+          <td class="px-4 py-3 whitespace-nowrap">${formatRM(entry.sell)}</td>
+          <td class="px-4 py-3 whitespace-nowrap">${formatRM(entry.buy - entry.sell)}</td>
+          <td class="px-4 py-3 text-right whitespace-nowrap">
+            <button data-delete-date="${entry.date}" class="btn rounded-xl px-3 py-1.5 text-xs font-semibold bg-rose-500/15 text-rose-200 border border-rose-400/30 hover:bg-rose-500/25">Delete</button>
+          </td>
+        </tr>
+      `).join('') || `
+        <tr>
+          <td class="px-4 py-6 text-slate-400" colspan="5">No entries yet. Add your first price to begin tracking.</td>
+        </tr>
+      `;
+    }
+
+    function renderChart() {
+      const ctx = $('priceChart');
+      const entries = getWindowEntries(getSortedEntries(), state.settings.windowPeriod);
+      const labels = entries.map((entry) => entry.date);
+      const historicalMidpoint = getHistoricalMidpoint(entries);
+      const profitMargin = Number(state.settings.profitMargin);
+      const buyTargetValue = historicalMidpoint == null ? null : historicalMidpoint - (profitMargin / 2);
+      const sellTargetValue = historicalMidpoint == null ? null : historicalMidpoint + (profitMargin / 2);
+
+      if (state.chart) {
+        state.chart.destroy();
+      }
+
+      state.chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Buy',
+              data: entries.map((entry) => entry.buy),
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+              tension: 0.3,
+              fill: false,
+              pointRadius: 3,
+            },
+            {
+              label: 'Sell',
+              data: entries.map((entry) => entry.sell),
+              borderColor: '#22c55e',
+              backgroundColor: 'rgba(34, 197, 94, 0.12)',
+              tension: 0.3,
+              fill: false,
+              pointRadius: 3,
+            },
+            {
+              label: 'Historical Midpoint',
+              data: entries.map(() => historicalMidpoint),
+              borderColor: '#ffffff',
+              borderDash: [6, 6],
+              tension: 0,
+              pointRadius: 0,
+              borderWidth: 2,
+            },
+            {
+              label: 'Buy Target',
+              data: entries.map(() => buyTargetValue),
+              borderColor: '#9ca3af',
+              borderDash: [8, 6],
+              tension: 0,
+              pointRadius: 0,
+              borderWidth: 2,
+            },
+            {
+              label: 'Sell Target',
+              data: entries.map(() => sellTargetValue),
+              borderColor: '#9ca3af',
+              borderDash: [8, 6],
+              tension: 0,
+              pointRadius: 0,
+              borderWidth: 2,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#dbeafe' }
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${formatRM(ctx.parsed.y)}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#94a3b8' },
+              grid: { color: 'rgba(148,163,184,.08)' }
+            },
+            y: {
+              ticks: {
+                color: '#94a3b8',
+                callback: (value) => `RM${value}`
+              },
+              grid: { color: 'rgba(148,163,184,.08)' }
+            }
+          }
+        }
+      });
+    }
+
+    function render() {
+      renderMetrics();
+      renderTable();
+      renderChart();
+    }
+
+    function parseOcrText(text) {
+      const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const joined = lines.join(' ');
+      const numbers = [...joined.matchAll(/(\d{2,4}(?:\.\d{1,2})?)/g)].map((match) => Number(match[1]));
+
+      const buyPatterns = [
+        /(?:you\s*)?buy(?:\s*[:\-]?\s*|\s*rm\s*)(\d{2,4}(?:\.\d{1,2})?)/i,
+        /harga\s*beli(?:\s*[:\-]?\s*|\s*rm\s*)(\d{2,4}(?:\.\d{1,2})?)/i,
+        /beli(?:\s*[:\-]?\s*|\s*rm\s*)(\d{2,4}(?:\.\d{1,2})?)/i,
+      ];
+      const sellPatterns = [
+        /(?:you\s*)?sell(?:\s*[:\-]?\s*|\s*rm\s*)(\d{2,4}(?:\.\d{1,2})?)/i,
+        /harga\s*jual(?:\s*[:\-]?\s*|\s*rm\s*)(\d{2,4}(?:\.\d{1,2})?)/i,
+        /jual(?:\s*[:\-]?\s*|\s*rm\s*)(\d{2,4}(?:\.\d{1,2})?)/i,
+      ];
+
+      const pick = (patterns) => {
+        for (const pattern of patterns) {
+          const match = joined.match(pattern);
+          if (match) return Number(match[1]);
+        }
+        return null;
+      };
+
+      let buy = pick(buyPatterns);
+      let sell = pick(sellPatterns);
+
+      if ((buy == null || sell == null) && numbers.length >= 2) {
+        const filtered = numbers.filter((n) => n >= 100 && n <= 1000);
+        if (buy == null && filtered.length >= 1) buy = filtered[0];
+        if (sell == null && filtered.length >= 2) sell = filtered[1];
+      }
+
+      if (buy != null && sell != null && buy < sell) {
+        [buy, sell] = [sell, buy];
+      }
+
+      return { buy, sell, raw: text };
+    }
+
+    async function handleScreenshot(file) {
+      setStatus('Reading screenshot with OCR...', 'warn');
+      $('ocrPanel').classList.add('hidden');
+      $('ocrPreview').textContent = '';
+      state.pendingOcr = null;
+
+      if (!window.Tesseract || !Tesseract.recognize) {
+        setStatus('OCR library is unavailable. Please enter values manually.', 'error');
+        return;
+      }
+
+      try {
+        const result = await Tesseract.recognize(file, 'eng');
+        const text = result?.data?.text || '';
+        const parsed = parseOcrText(text);
+        if (parsed.buy == null || parsed.sell == null) {
+          setStatus('Could not read numbers. Please enter manually.', 'error');
+          return;
+        }
+        if (parsed.buy < 100 || parsed.buy > 1000 || parsed.sell < 100 || parsed.sell > 1000) {
+          setStatus('OCR found values, but they look unrealistic. Please verify.', 'warn');
+        } else {
+          setStatus('OCR detected values. Please confirm or edit.', 'success');
+        }
+        state.pendingOcr = parsed;
+        $('buyInput').value = parsed.buy.toFixed(2);
+        $('sellInput').value = parsed.sell.toFixed(2);
+        $('ocrPreview').textContent = `Detected: Buy ${formatRM(parsed.buy)} | Sell ${formatRM(parsed.sell)}. Please verify before saving.`;
+        $('ocrPanel').classList.remove('hidden');
+      } catch (error) {
+        console.error(error);
+        setStatus('OCR failed. Please enter values manually.', 'error');
+      }
+    }
+
+    function validateEntry(date, buy, sell) {
+      if (!date) return 'Please choose a date.';
+      if (!Number.isFinite(buy) || !Number.isFinite(sell)) return 'Please enter valid buy and sell prices.';
+      if (buy < 100 || buy > 1000 || sell < 100 || sell > 1000) return 'Prices look unrealistic. Please check the values.';
+      if (buy <= sell) return 'You Buy should be higher than You Sell. Please check the values.';
+      return null;
+    }
+
+    function exportCsv() {
+      const rows = [['date', 'buy', 'sell', 'spread'], ...getSortedEntries().map((entry) => [
+        entry.date,
+        entry.buy.toFixed(2),
+        entry.sell.toFixed(2),
+        (entry.buy - entry.sell).toFixed(2),
+      ])];
+      const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gold-price-tracker-${todayISO()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function parseCsvText(text) {
+      const raw = String(text || '').trim();
+      if (!raw) {
+        throw new Error('The CSV file is empty.');
+      }
+
+      const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (lines.length < 2) {
+        throw new Error('The CSV must include a header row and at least one data row.');
+      }
+
+      const parseRow = (line) => {
+        const cells = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          const next = line[i + 1];
+          if (char === '"' && inQuotes && next === '"') {
+            current += '"';
+            i++;
+          } else if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            cells.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        cells.push(current.trim());
+        return cells.map((cell) => cell.replace(/^"|"$/g, ''));
+      };
+
+      const headers = parseRow(lines[0]).map((header) => header.toLowerCase());
+      const required = ['date', 'buy', 'sell', 'spread'];
+      const sameShape = headers.length === required.length && required.every((header, index) => headers[index] === header);
+      if (!sameShape) {
+        throw new Error('CSV columns must be exactly: date, buy, sell, spread.');
+      }
+
+      const getIndex = (name) => headers.indexOf(name);
+      const entries = lines.slice(1).map((line, index) => {
+        const row = parseRow(line);
+        if (row.length < required.length) {
+          throw new Error(`Invalid data on row ${index + 2}.`);
+        }
+        const date = row[getIndex('date')];
+        const buy = Number(row[getIndex('buy')]);
+        const sell = Number(row[getIndex('sell')]);
+        if (!date || !Number.isFinite(buy) || !Number.isFinite(sell)) {
+          throw new Error(`Invalid data on row ${index + 2}.`);
+        }
+        return { date, buy, sell };
+      });
+
+      entries.sort((a, b) => a.date.localeCompare(b.date));
+      return entries;
+    }
+
+    async function importCsv(file) {
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const entries = parseCsvText(text);
+        const ok = confirm('This will replace all current data. Continue?');
+        if (!ok) return;
+        state.entries = entries;
+        saveState();
+        render();
+        clearForm();
+        setStatus(`Imported ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from CSV.`, 'success');
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || 'Could not import CSV.', 'error');
+      }
+    }
+
+    function seedDemoData() {
+      const demo = [
+        { date: '2026-06-11', buy: 352.0, sell: 330.0 },
+        { date: '2026-06-12', buy: 353.5, sell: 331.8 },
+        { date: '2026-06-13', buy: 355.2, sell: 333.5 },
+        { date: '2026-06-14', buy: 357.8, sell: 335.2 },
+        { date: '2026-06-15', buy: 360.0, sell: 338.1 },
+        { date: '2026-06-16', buy: 359.2, sell: 337.0 },
+        { date: '2026-06-17', buy: 358.1, sell: 336.2 },
+      ];
+      state.entries = demo;
+      saveState();
+      render();
+      setStatus('Demo data loaded. Replace it with your own entries anytime.', 'success');
+    }
+
+    function bindEvents() {
+      $('entryDate').value = todayISO();
+      $('clearFormBtn').addEventListener('click', clearForm);
+      $('seedDemoBtn').addEventListener('click', seedDemoData);
+      $('addEntryBtn').addEventListener('click', () => {
+        const date = $('entryDate').value;
+        const buy = clampNumber($('buyInput').value);
+        const sell = clampNumber($('sellInput').value);
+        const error = validateEntry(date, buy, sell);
+        if (error) {
+          setStatus(error, 'error');
+          return;
+        }
+        upsertEntry({ date, buy, sell });
+        setStatus(`Saved ${date}: Buy ${formatRM(buy)} | Sell ${formatRM(sell)}.`, 'success');
+      });
+      $('exportCsvBtn').addEventListener('click', exportCsv);
+      $('periodSelect').addEventListener('change', (event) => {
+        const next = event.target.value;
+        if (!Object.prototype.hasOwnProperty.call(WINDOW_DAYS, next)) return;
+        state.settings.windowPeriod = next;
+        saveState();
+        render();
+      });
+      $('profitMarginInput').addEventListener('change', (event) => {
+        const next = clampNumber(event.target.value);
+        if (next == null || next < 0) return;
+        state.settings.profitMargin = next;
+        saveState();
+        render();
+      });
+      $('importCsvInput').addEventListener('change', async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        await importCsv(file);
+        event.target.value = '';
+      });
+      $('clearAllBtn').addEventListener('click', () => {
+        if (!confirm('Clear all saved gold price data?')) return;
+        state.entries = [];
+        saveState();
+        render();
+        clearForm();
+        setStatus('All data cleared.', 'warn');
+      });
+      $('dismissOcrBtn').addEventListener('click', () => {
+        $('ocrPanel').classList.add('hidden');
+        state.pendingOcr = null;
+        setStatus('OCR preview dismissed. You can edit values manually.', 'slate');
+      });
+      $('applyOcrBtn').addEventListener('click', () => {
+        if (!state.pendingOcr) return;
+        $('buyInput').value = Number(state.pendingOcr.buy).toFixed(2);
+        $('sellInput').value = Number(state.pendingOcr.sell).toFixed(2);
+        $('ocrPanel').classList.add('hidden');
+        setStatus('OCR values applied. Review and press Add Entry.', 'success');
+      });
+      $('screenshotInput').addEventListener('change', async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        await handleScreenshot(file);
+        event.target.value = '';
+      });
+      $('tableBody').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-delete-date]');
+        if (!button) return;
+        const date = button.getAttribute('data-delete-date');
+        const item = state.entries.find((entry) => entry.date === date);
+        if (!item) return;
+        if (!confirm(`Delete entry for ${date}?`)) return;
+        state.entries = state.entries.filter((entry) => entry.date !== date);
+        saveState();
+        render();
+        setStatus(`Deleted entry for ${date}.`, 'warn');
+      });
+    }
+
+    loadState();
+    $('periodSelect').value = state.settings.windowPeriod;
+    $('profitMarginInput').value = Number(state.settings.profitMargin).toFixed(2);
+    bindEvents();
+    render();
+    clearForm();
+  </script>
+</body>
+</html>
