@@ -119,6 +119,10 @@
               </div>
               <div class="space-y-4">
                 <div>
+                  <label class="block text-sm text-slate-300 mb-2" for="apiKeyInput">API Key (Saved Locally)</label>
+                  <input id="apiKeyInput" type="password" placeholder="sk-or-v1-xxxxxxxxxxxxxxxx" class="w-full rounded-2xl px-4 py-3" />
+                </div>
+                <div>
                   <label class="block text-sm text-slate-300 mb-2" for="entryDate">Date</label>
                   <input id="entryDate" type="date" class="w-full rounded-2xl px-4 py-3" />
                 </div>
@@ -293,6 +297,7 @@
       settings: {
         windowPeriod: 'all',
         profitMargin: 10,
+        apiKey: '',
       },
       chart: null,
       pendingOcr: null,
@@ -344,6 +349,9 @@
         }
         if (saved.settings && Number.isFinite(Number(saved.settings.profitMargin)) && Number(saved.settings.profitMargin) >= 0) {
           state.settings.profitMargin = Number(saved.settings.profitMargin);
+        }
+        if (saved.settings && typeof saved.settings.apiKey === 'string') {
+          state.settings.apiKey = saved.settings.apiKey;
         }
       } catch (err) {
         console.warn('Failed to load saved data', err);
@@ -654,14 +662,22 @@
     }
 
     function exportCsv() {
-      const rows = [['date', 'buy', 'sell', 'spread'], ...getSortedEntries().map((entry) => [
+      const metadataLine = `# SETTINGS: apiKey=${state.settings.apiKey || ''}`;
+      const headers = ['date', 'buy', 'sell', 'spread'];
+      const dataRows = getSortedEntries().map((entry) => [
         entry.date,
         entry.buy.toFixed(2),
         entry.sell.toFixed(2),
         (entry.buy - entry.sell).toFixed(2),
-      ])];
-      const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      ]);
+      
+      const csvContent = [
+        metadataLine,
+        headers.map(cell => `"${cell}"`).join(','),
+        ...dataRows.map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -678,7 +694,17 @@
         throw new Error('The CSV file is empty.');
       }
 
-      const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      let lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      let extractedApiKey = '';
+
+      if (lines[0] && lines[0].startsWith('# SETTINGS:')) {
+        const match = lines[0].match(/apiKey=(.*)/);
+        if (match) {
+          extractedApiKey = match[1].trim();
+        }
+        lines = lines.slice(1);
+      }
+
       if (lines.length < 2) {
         throw new Error('The CSV must include a header row and at least one data row.');
       }
@@ -729,21 +755,30 @@
       });
 
       entries.sort((a, b) => a.date.localeCompare(b.date));
-      return entries;
+      return { entries, apiKey: extractedApiKey };
     }
 
     async function importCsv(file) {
       if (!file) return;
       try {
         const text = await file.text();
-        const entries = parseCsvText(text);
-        const ok = confirm('This will replace all current data. Continue?');
+        const result = parseCsvText(text);
+        const ok = confirm('This will replace all current data and settings. Continue?');
         if (!ok) return;
-        state.entries = entries;
+        
+        state.entries = result.entries;
+        if (result.apiKey !== undefined) {
+          state.settings.apiKey = result.apiKey;
+          $('apiKeyInput').value = result.apiKey;
+        }
+        
         saveState();
         render();
         clearForm();
-        setStatus(`Imported ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from CSV.`, 'success');
+        
+        let msg = `Imported ${result.entries.length} entr${result.entries.length === 1 ? 'y' : 'ies'} from CSV.`;
+        if (result.apiKey) msg += ' Configuration setup complete.';
+        setStatus(msg, 'success');
       } catch (error) {
         console.error(error);
         setStatus(error.message || 'Could not import CSV.', 'error');
@@ -770,6 +805,10 @@
       $('entryDate').value = todayISO();
       $('clearFormBtn').addEventListener('click', clearForm);
       $('seedDemoBtn').addEventListener('click', seedDemoData);
+      $('apiKeyInput').addEventListener('input', (event) => {
+        state.settings.apiKey = event.target.value.trim();
+        saveState();
+      });
       $('addEntryBtn').addEventListener('click', () => {
         const date = $('entryDate').value;
         const buy = clampNumber($('buyInput').value);
@@ -846,6 +885,7 @@
     loadState();
     $('periodSelect').value = state.settings.windowPeriod;
     $('profitMarginInput').value = Number(state.settings.profitMargin).toFixed(2);
+    $('apiKeyInput').value = state.settings.apiKey || '';
     bindEvents();
     render();
     clearForm();
