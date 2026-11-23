@@ -1,0 +1,54 @@
+{
+  "notifyEmail": "juniorlooi95@gmail.com",
+  "rearmPercent": 0.3,
+  "heartbeatDays": 30,
+  "levels": [
+    {
+      "label": "Falling hard: review plan (don't panic-sell)",
+      "direction": "below",
+      "price": 460
+    },
+    {
+      "label": "Recovering: RM540 reached, hold",
+      "direction": "above",
+      "price": 540
+    },
+    {
+      "label": "STEP 1: sell 1g",
+      "direction": "above",
+      "price": 580
+    },
+    {
+      "label": "STEP 2: sell 1g",
+      "direction": "above",
+      "price": 600
+    },
+    {
+      "label": "STEP 3: sell 2g",
+      "direction": "above",
+      "price": 615
+    },
+    {
+      "label": "BREAK-EVEN price reached (RM625.22)",
+      "direction": "above",
+      "price": 625.3
+    },
+    {
+      "label": "STEP 4: sell last 2g",
+      "direction": "above",
+      "price": 630
+    }
+  ],
+  "move": {
+    "percent": 2.0,
+    "refreshHours": 24
+  },
+  "position": {
+    "avgCostPerGram": 618.12,
+    "profitTargetsPercent": [
+      0,
+      3,
+      5
+    ]
+  }
+}
